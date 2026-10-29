@@ -1,0 +1,74 @@
+#[[
+Copyright (c) 2020-2024 Key4hep-Project.
+
+This file is part of Key4hep.
+See https://key4hep.github.io/key4hep-doc/ for further info.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+]]
+CMAKE_MINIMUM_REQUIRED(VERSION 3.12)
+
+project(k4HungarianRecoMCTruthLinker LANGUAGES CXX)
+
+set(PACKAGE_VERSION_MAJOR 0)
+set(PACKAGE_VERSION_MINOR 1)
+set(PACKAGE_VERSION_PATCH 0)
+
+set(PACKAGE_VERSION "${PACKAGE_VERSION_MAJOR}.${PACKAGE_VERSION_MINOR}.${PACKAGE_VERSION_PATCH}")
+
+find_package(EDM4HEP REQUIRED)
+find_package(k4FWCore REQUIRED)
+find_package(Gaudi REQUIRED)
+find_package(Boost CONFIG REQUIRED) # header-only: Boost.Graph maximum_weighted_matching (>= 1.89)
+
+include(cmake/Key4hepConfig.cmake)
+
+include(GNUInstallDirs)
+
+file(GLOB _plugin_sources src/components/*.cpp)
+gaudi_add_module(k4HungarianRecoMCTruthLinkerPlugins
+                 SOURCES ${_plugin_sources}
+                 LINK Gaudi::GaudiKernel
+                      k4FWCore::k4FWCore
+                      EDM4HEP::edm4hep
+                      Boost::headers
+                      )
+
+install(TARGETS k4HungarianRecoMCTruthLinkerPlugins
+  EXPORT ${CMAKE_PROJECT_NAME}Targets
+  RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT bin
+  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT shlib
+  COMPONENT dev)
+
+include(CTest)
+
+# Runs the linker on a CLD reconstructed file with both track-truth sources; enabled when a test input is given, e.g.
+#   cmake .. -DHUNGARIANRECOMCTRUTHLINKER_TEST_INPUT=/path/to/file.edm4hep.root
+# The tests use the installed package: run them after `ninja install` and `k4_local_repo`.
+set(HUNGARIANRECOMCTRUTHLINKER_TEST_INPUT "" CACHE FILEPATH "EDM4hep input file for the tests")
+if(HUNGARIANRECOMCTRUTHLINKER_TEST_INPUT)
+  set(_options ${CMAKE_CURRENT_SOURCE_DIR}/options/runHungarianRecoMCTruthLinker.py)
+
+  # truth from CalohitMCTruthLink + SiTracksMCTruthLink
+  add_test(NAME run_truthLinks
+           COMMAND k4run ${_options} --inputFiles ${HUNGARIANRECOMCTRUTHLINKER_TEST_INPUT} --num_ev 10
+                   --outputFile ${CMAKE_CURRENT_BINARY_DIR}/test_truthLinks.edm4hep.root)
+
+  # track truth from TrackerHit -> SimTrackerHit relations instead of SiTracksMCTruthLink
+  add_test(NAME run_trackerHitRelations
+           COMMAND k4run ${_options} --inputFiles ${HUNGARIANRECOMCTRUTHLINKER_TEST_INPUT} --num_ev 10
+                   --outputFile ${CMAKE_CURRENT_BINARY_DIR}/test_trackerHitRelations.edm4hep.root
+                   --TrackerHitsRelInputCollections VXDTrackerHitRelations VXDEndcapTrackerHitRelations
+                     InnerTrackerBarrelHitsRelations OuterTrackerBarrelHitsRelations
+                     InnerTrackerEndcapHitsRelations OuterTrackerEndcapHitsRelations)
+endif()
